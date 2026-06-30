@@ -1,0 +1,17 @@
+[
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 5000, "available_capital": 20000},
+    "description": "25% of capital — exceeds 10% trade value cap"
+  },
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 15000, "available_capital": 50000},
+    "description": "30% of capital — large order, clear cap violation"
+  },
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 10001, "available_capital": 100000},
+    "description": "Just over 10% of capital — boundary breach by 1 unit"
+  }
+]

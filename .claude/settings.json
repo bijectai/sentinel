@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/sentinel --help)",
+      "Bash(.venv/bin/sentinel list-policies *)",
+      "Bash(echo \"policy_id: cap_001\")",
+      "Bash(.venv/bin/sentinel run *)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 500, "available_capital": 10000},
+    "description": "5% of capital — well within 10% trade value cap"
+  },
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 1000, "available_capital": 50000},
+    "description": "2% of capital — small trade, clearly compliant"
+  },
+  {
+    "tool_name": "place_order",
+    "params": {"qty": 2500, "available_capital": 25000},
+    "description": "Exactly 10% of capital — at the boundary, should be allowed"
+  }
+]

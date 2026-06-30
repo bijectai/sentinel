@@ -1,0 +1,17 @@
+[
+  {
+    "tool_name": "rebalance_portfolio",
+    "params": {"asset": "BTC", "new_weight": 8500},
+    "description": "BTC at 85% (8500 bps) — extreme concentration, breaches 25% single-asset cap"
+  },
+  {
+    "tool_name": "rebalance_portfolio",
+    "params": {"asset": "GME", "new_weight": 5000},
+    "description": "GME at 50% (5000 bps) — single-asset cap violation on volatile stock"
+  },
+  {
+    "tool_name": "rebalance_portfolio",
+    "params": {"asset": "SPY", "new_weight": 2600},
+    "description": "SPY at 26% (2600 bps) — just over the 25% single-asset cap"
+  }
+]

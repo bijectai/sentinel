@@ -1,0 +1,4 @@
+target_base_url: "https://api.devrashie.space"
+policy_id: "CAP-001"
+fixtures_dir: "examples/policies/CAP-001"
+agent_id: "sentinel-v0"
