@@ -66,9 +66,10 @@ Run a live, multi-round adversarial loop against a single guardrail. Each round,
 ```bash
 sentinel adversarial --config sentinel.yaml --agent scripted --max-rounds 10
 sentinel adversarial --config sentinel.yaml --agent claude --max-rounds 10
+sentinel adversarial --config sentinel.yaml --agent gpt --max-rounds 10
 ```
 
-`--agent scripted` replays your fixture cases in order — useful as a deterministic baseline. `--agent claude` uses a live Claude call each round to actively try to find a bypass or boundary case, using the history of previous rounds to inform its next attempt. Requires `ANTHROPIC_API_KEY` in your environment.
+`--agent scripted` replays your fixture cases in order — useful as a deterministic baseline. `--agent claude` uses a live Claude call each round to actively probe policy boundaries, using the history of previous rounds to inform its next attempt. Requires `ANTHROPIC_API_KEY`. `--agent gpt` does the same using GPT-4o. Requires `OPENAI_API_KEY`.
 
 Exit code 2 if any round is classified `BYPASSED`, 0 otherwise.
 
@@ -78,11 +79,23 @@ Run the same agent against two guardrails in parallel — biject and a local det
 
 ```bash
 sentinel compare --config sentinel.yaml --agent scripted --max-rounds 10
+sentinel compare --config sentinel.yaml --agent claude --max-rounds 10
+sentinel compare --config sentinel.yaml --agent gpt --max-rounds 10
 ```
 
 Surfaces both bypasses and **disagreements** (rounds where the two guardrails returned different verdicts for the same action) as separate findings. A disagreement alone is not a failure — it means the two guardrails enforce the policy differently, which is worth investigating but isn't necessarily a security problem.
 
 Exit code 2 if either guardrail produces a `BYPASSED` result, 0 otherwise (disagreements do not affect exit code).
+
+### `sentinel deploy`
+
+Compile and deploy a Lean policy to the configured biject endpoint.
+
+```bash
+sentinel deploy --config sentinel.yaml --lean-file path/to/policy.lean --policy-id CUSTOM-001 --description "My policy"
+```
+
+Reads `target_base_url` and `api_key` from your config, posts the Lean source to the biject compile endpoint, and reports success or the compile error. Exit code 0 on success, 1 on failure.
 
 ## Classification labels
 
@@ -124,7 +137,7 @@ class AgentAdapter(abc.ABC):
 
 ## Status
 
-Sentinel is under active development. Current scope: scripted and Claude-driven agents, biject and stub guardrail adapters, single-guardrail adversarial mode, and two-guardrail comparison mode. Not yet built: live policy hotswap, additional model adapters, and a GUI.
+Sentinel is under active development. Current scope: scripted, Claude, and GPT-4o agents; biject and stub guardrail adapters; single-guardrail adversarial mode; two-guardrail comparison mode; and Lean policy deployment via `sentinel deploy`. The GUI (`web/index.html`) is a self-contained simulation for demos and does not require a running backend.
 
 ## License
 
