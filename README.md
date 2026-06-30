@@ -87,6 +87,26 @@ Surfaces both bypasses and **disagreements** (rounds where the two guardrails re
 
 Exit code 2 if either guardrail produces a `BYPASSED` result, 0 otherwise (disagreements do not affect exit code).
 
+### `sentinel serve`
+
+Start a local web server with a live GUI for running and watching evaluations in real time.
+
+```bash
+sentinel serve                        # http://127.0.0.1:8000/
+sentinel serve --host 0.0.0.0 --port 9000
+sentinel serve --reload               # auto-reload for development
+```
+
+Opens a browser UI where you can select a policy, agent, and mode; start a run; and watch each round stream in as it completes. Rounds are shown with classification badges and a bypass banner fires immediately if any `BYPASSED` result arrives. Compare mode shows both guardrails' verdicts side-by-side and highlights disagreements. A WebSocket connection indicator shows whether the live feed is active — a dropped connection is visible rather than silent.
+
+The server also exposes:
+- `GET /api/policies` — list available policy fixture directories
+- `POST /api/runs` — start a run (returns `run_id` immediately)
+- `GET /ws/runs/{run_id}` — WebSocket for live round streaming
+- `GET /api/runs/{run_id}` — REST fallback for full run state (safe to poll if WebSocket is unavailable)
+
+Requires `fastapi` and `uvicorn`, which are included in the default install. CORS is restricted to `localhost`/`127.0.0.1` by default; set `SENTINEL_CORS_ORIGINS` (comma-separated) to allow other origins.
+
 ### `sentinel deploy`
 
 Compile and deploy a Lean policy to the configured biject endpoint.
@@ -137,7 +157,7 @@ class AgentAdapter(abc.ABC):
 
 ## Status
 
-Sentinel is under active development. Current scope: scripted, Claude, and GPT-4o agents; biject and stub guardrail adapters; single-guardrail adversarial mode; two-guardrail comparison mode; and Lean policy deployment via `sentinel deploy`. The GUI (`web/index.html`) is a self-contained simulation for demos and does not require a running backend.
+Sentinel is under active development. Current scope: scripted, Claude, and GPT-4o agents; biject and stub guardrail adapters; single-guardrail adversarial mode; two-guardrail comparison mode; Lean policy deployment via `sentinel deploy`; and a live web GUI via `sentinel serve`.
 
 ## License
 
