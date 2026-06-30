@@ -8,16 +8,39 @@ import typer
 
 from sentinel.agents.base import AgentAdapter
 from sentinel.agents.claude_agent import AgentError, ClaudeAgent
+from sentinel.agents.gpt_agent import GPTAgent
 from sentinel.agents.scripted_agent import ScriptedAgent
 from sentinel.config import SentinelConfigError, load_config
 from sentinel.guardrails.base import GuardrailAdapter, Verdict
 from sentinel.guardrails.biject_adapter import BijectAdapter
 from sentinel.policies.registry import PolicyUnderTest, load_policy
+from sentinel.policies.deploy import deploy_policy
 from sentinel.guardrails.stub_adapter import StubAdapter
 from sentinel.runner.comparator import ComparisonResult, run_comparison
 from sentinel.runner.loop import RoundResult, RunResult, run_loop
 
+__version__ = "0.1.0"
+
 app = typer.Typer(add_completion=False)
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"sentinel {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        None,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    """sentinel — adversarial guardrail evaluator."""
 
 
 @app.command()
@@ -80,7 +103,7 @@ async def _run_cases(
 @app.command()
 def adversarial(
     config_path: str = typer.Option("sentinel.yaml", "--config", help="Path to sentinel.yaml"),
-    agent: str = typer.Option("scripted", "--agent", help="scripted or claude"),
+    agent: str = typer.Option("scripted", "--agent", help="Agent to use: scripted, claude, or gpt"),
     max_rounds: int = typer.Option(10, "--max-rounds"),
 ) -> None:
     """Run an adversarial agent-vs-guardrail loop and classify each round."""
@@ -108,8 +131,14 @@ def adversarial(
         except AgentError as e:
             typer.echo(f"[ERROR] {e}", err=True)
             raise typer.Exit(1)
+    elif agent == "gpt":
+        try:
+            agent_adapter = GPTAgent()
+        except AgentError as e:
+            typer.echo(f"[ERROR] {e}", err=True)
+            raise typer.Exit(1)
     else:
-        typer.echo(f"[ERROR] Unknown agent '{agent}' (expected 'scripted' or 'claude')", err=True)
+        typer.echo(f"[ERROR] Unknown agent '{agent}' (expected 'scripted', 'claude', or 'gpt')", err=True)
         raise typer.Exit(1)
 
     result = asyncio.run(
@@ -185,7 +214,7 @@ def _print_round(r: RoundResult) -> None:
 @app.command()
 def compare(
     config_path: str = typer.Option("sentinel.yaml", "--config", help="Path to sentinel.yaml"),
-    agent: str = typer.Option("scripted", "--agent", help="scripted or claude"),
+    agent: str = typer.Option("scripted", "--agent", help="Agent to use: scripted, claude, or gpt"),
     max_rounds: int = typer.Option(10, "--max-rounds"),
 ) -> None:
     """Run an agent against biject and stub guardrails side-by-side and report disagreements."""
@@ -215,8 +244,14 @@ def compare(
         except AgentError as e:
             typer.echo(f"[ERROR] {e}", err=True)
             raise typer.Exit(1)
+    elif agent == "gpt":
+        try:
+            agent_adapter = GPTAgent()
+        except AgentError as e:
+            typer.echo(f"[ERROR] {e}", err=True)
+            raise typer.Exit(1)
     else:
-        typer.echo(f"[ERROR] Unknown agent '{agent}' (expected 'scripted' or 'claude')", err=True)
+        typer.echo(f"[ERROR] Unknown agent '{agent}' (expected 'scripted', 'claude', or 'gpt')", err=True)
         raise typer.Exit(1)
 
     result = asyncio.run(
@@ -350,3 +385,41 @@ def list_policies(
 
     for name in sorted(entries):
         typer.echo(name)
+
+
+@app.command("deploy")
+def deploy(
+    config_path: str = typer.Option("sentinel.yaml", "--config", help="Path to sentinel.yaml"),
+    lean_file: str = typer.Option(..., "--lean-file", help="Path to .lean policy file"),
+    policy_id: str = typer.Option(..., "--policy-id", help="Policy ID to register"),
+    description: str = typer.Option("", "--description", help="Human-readable policy description"),
+) -> None:
+    """Compile and deploy a Lean policy to the configured biject endpoint."""
+    try:
+        cfg = load_config(config_path)
+    except SentinelConfigError as e:
+        typer.echo(f"[ERROR] {e}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        lean_code = open(lean_file).read()
+    except OSError as e:
+        typer.echo(f"[ERROR] Cannot read lean file: {e}", err=True)
+        raise typer.Exit(1)
+
+    result = asyncio.run(
+        deploy_policy(
+            base_url=cfg.target_base_url,
+            lean_code=lean_code,
+            policy_id=policy_id,
+            description=description,
+            api_key=cfg.api_key,
+        )
+    )
+
+    if result.success:
+        typer.secho(f"[OK] Policy '{policy_id}' deployed successfully.", fg=typer.colors.GREEN)
+        raise typer.Exit(0)
+    else:
+        typer.echo(f"[ERROR] Deploy failed: {result.error}", err=True)
+        raise typer.Exit(1)
