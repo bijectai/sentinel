@@ -2,7 +2,7 @@
 
 Sentinel is an open-source adversarial testing tool for AI guardrail systems. It loads a compliance policy, points one or more guardrails at it, and runs an AI agent — scripted or live LLM — against them to see whether the guardrail correctly blocks what it should and allows what it should.
 
-Sentinel ships with [biject](https://github.com/bijectai/biject) as its reference guardrail implementation, but the agent and guardrail layers are both pluggable.
+Sentinel ships with [biject](https://bijectai.com) as its reference guardrail implementation, but the agent and guardrail layers are both pluggable.
 
 ## What a `BYPASSED` result means
 
