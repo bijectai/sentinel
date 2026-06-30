@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sentinel — Guardrail Evaluator</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --bg2: #141414;
+    --bg3: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #e0e0e0;
+    --muted: #666;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #facc15;
+    --blue: #3b82f6;
+    --orange: #f97316;
+    --purple: #a855f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 16px; letter-spacing: 0.1em; color: var(--text); }
+  header span { color: var(--muted); font-size: 11px; }
+
+  #ws-indicator {
+    margin-left: auto;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #ws-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  #ws-dot.connected { background: var(--green); }
+  #ws-dot.reconnecting { background: var(--yellow); }
+  #ws-dot.disconnected { background: var(--red); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: calc(100vh - 51px);
+  }
+
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+  .field label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .field select, .field input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    border-radius: 4px;
+    outline: none;
+  }
+  .field select:focus, .field input:focus { border-color: var(--blue); }
+  .field input[type="password"] { letter-spacing: 0.05em; }
+
+  button#start-btn {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  button#start-btn:hover { background: #2563eb; }
+  button#start-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  #summary {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    display: none;
+  }
+  #summary.visible { display: block; }
+  #summary .stat { color: var(--text); }
+  #summary .bypass-stat { color: var(--red); font-weight: 700; }
+
+  main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #bypass-banner {
+    background: #450a0a;
+    border-bottom: 2px solid var(--red);
+    padding: 10px 20px;
+    color: var(--red);
+    font-weight: 700;
+    font-size: 13px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: 0.04em;
+  }
+  #bypass-banner.visible { display: flex; }
+
+  #rounds-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .round-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: 10px;
+    align-items: start;
+  }
+  .round-card.bypassed {
+    border-color: var(--red);
+    background: #1a0000;
+  }
+  .round-card.disagreement {
+    border-color: var(--yellow);
+  }
+
+  .round-num {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: right;
+    padding-top: 2px;
+  }
+
+  .round-body { min-width: 0; }
+  .tool-name { color: var(--blue); font-weight: 600; }
+  .params {
+    color: var(--muted);
+    word-break: break-all;
+    white-space: pre-wrap;
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .compare-results { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+  .guardrail-row { display: flex; gap: 8px; align-items: center; font-size: 11px; }
+  .guardrail-label { color: var(--muted); min-width: 60px; }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .badge.BYPASSED        { background: #450a0a; color: var(--red); }
+  .badge.BLOCKED_CORRECTLY { background: #052e16; color: var(--green); }
+  .badge.ALLOWED_CORRECTLY { background: #052e16; color: var(--green); }
+  .badge.INDETERMINATE   { background: #1c1c00; color: var(--yellow); }
+  .badge.INFRA_GAP       { background: #1c0d00; color: var(--orange); }
+
+  .verdict-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.03em;
+  }
+  .verdict-pill.proved   { background: #052e16; color: var(--green); }
+  .verdict-pill.refuted  { background: #1a0000; color: var(--red); }
+  .verdict-pill.timeout,
+  .verdict-pill.error    { background: #1c0d00; color: var(--orange); }
+
+  .round-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .case-label {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  #disagreements-section {
+    border-top: 1px solid var(--border);
+    padding: 12px 20px;
+    display: none;
+  }
+  #disagreements-section.visible { display: block; }
+  #disagreements-section h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--yellow);
+    margin-bottom: 8px;
+  }
+  .disagreement-row {
+    font-size: 11px;
+    color: var(--text);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .disagreement-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SENTINEL</h1>
+  <span>adversarial guardrail evaluator</span>
+  <div id="ws-indicator">
+    <div id="ws-dot"></div>
+    <span id="ws-label">idle</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="field">
+      <label>Fixtures Directory</label>
+      <input type="text" id="fixtures-dir" value="examples/policies" />
+    </div>
+    <div class="field">
+      <label>Policy</label>
+      <select id="policy-select"><option value="">Loading…</option></select>
+    </div>
+    <div class="field">
+      <label>Agent</label>
+      <select id="agent-select">
+        <option value="scripted">scripted</option>
+        <option value="claude">claude</option>
+        <option value="gpt">gpt</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Mode</label>
+      <select id="mode-select">
+        <option value="single">single</option>
+        <option value="compare">compare (biject vs stub)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Max Rounds</label>
+      <input type="number" id="max-rounds" value="10" min="1" max="100" />
+    </div>
+    <div class="field">
+      <label>Guardrail Base URL</label>
+      <input type="text" id="guardrail-url" value="http://localhost:3000" />
+    </div>
+    <div class="field">
+      <label>API Key (optional)</label>
+      <input type="password" id="api-key" placeholder="sk-…" autocomplete="off" />
+    </div>
+
+    <button id="start-btn">▶ Start Run</button>
+
+    <div id="summary">
+      <div>Rounds: <span class="stat" id="stat-rounds">0</span></div>
+      <div>Bypasses: <span id="stat-bypasses" class="stat">0</span></div>
+      <div>Infra gaps: <span class="stat" id="stat-infra">0</span></div>
+      <div id="stat-disagreements-line" style="display:none">
+        Disagreements: <span class="stat" id="stat-disagreements">0</span>
+      </div>
+      <div>Status: <span class="stat" id="stat-status">—</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="bypass-banner">⚠ BYPASS DETECTED — guardrail allowed an action that should have been refused</div>
+    <div id="rounds-container"></div>
+    <div id="disagreements-section">
+      <h3>⚠ Disagreements</h3>
+      <div id="disagreements-list"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const API = '';
+
+// --- State ---
+let currentWs = null;
+let runStats = { rounds: 0, bypasses: 0, infra: 0, disagreements: 0 };
+let mode = 'single';
+
+// --- UI helpers ---
+function setWsState(state, label) {
+  const dot = document.getElementById('ws-dot');
+  dot.className = state;
+  document.getElementById('ws-label').textContent = label;
+}
+
+function setStartBtn(enabled) {
+  document.getElementById('start-btn').disabled = !enabled;
+}
+
+function resetUI() {
+  document.getElementById('rounds-container').innerHTML = '';
+  document.getElementById('bypass-banner').classList.remove('visible');
+  document.getElementById('summary').classList.add('visible');
+  document.getElementById('disagreements-section').classList.remove('visible');
+  document.getElementById('disagreements-list').innerHTML = '';
+  runStats = { rounds: 0, bypasses: 0, infra: 0, disagreements: 0 };
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('stat-rounds').textContent = runStats.rounds;
+  document.getElementById('stat-bypasses').textContent = runStats.bypasses;
+  const bypassEl = document.getElementById('stat-bypasses');
+  bypassEl.className = runStats.bypasses > 0 ? 'bypass-stat' : 'stat';
+  document.getElementById('stat-infra').textContent = runStats.infra;
+  document.getElementById('stat-disagreements').textContent = runStats.disagreements;
+}
+
+function classificationBadge(cls) {
+  return `<span class="badge ${cls}">${cls.replace(/_/g,' ')}</span>`;
+}
+
+function verdictPill(verdict) {
+  return `<span class="verdict-pill ${verdict}">${verdict}</span>`;
+}
+
+function paramsStr(params) {
+  return JSON.stringify(params, null, 2);
+}
+
+// --- Render a single-mode round ---
+function renderRound(rd) {
+  const bypassed = rd.classification === 'BYPASSED';
+  const infra = rd.classification === 'INFRA_GAP';
+  if (bypassed) {
+    runStats.bypasses++;
+    document.getElementById('bypass-banner').classList.add('visible');
+  }
+  if (infra) runStats.infra++;
+  runStats.rounds++;
+  updateStats();
+
+  const card = document.createElement('div');
+  card.className = 'round-card' + (bypassed ? ' bypassed' : '');
+  card.innerHTML = `
+    <div class="round-num">#${rd.round_number}</div>
+    <div class="round-body">
+      <span class="tool-name">${escHtml(rd.proposed_action.tool_name)}</span>
+      <div class="params">${escHtml(paramsStr(rd.proposed_action.params))}</div>
+    </div>
+    <div class="round-right">
+      ${classificationBadge(rd.classification)}
+      ${verdictPill(rd.verdict.outcome)}
+      ${rd.case_label ? `<span class="case-label">label: ${escHtml(rd.case_label)}</span>` : ''}
+    </div>`;
+  document.getElementById('rounds-container').appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+// --- Render a compare-mode round ---
+function renderCompareRound(data) {
+  const isDisagreement = data.is_disagreement;
+  runStats.rounds++;
+
+  let anyBypass = false;
+  let anyInfra = false;
+  let guardrailRows = '';
+  for (const [grName, rd] of Object.entries(data.results)) {
+    if (rd.classification === 'BYPASSED') anyBypass = true;
+    if (rd.classification === 'INFRA_GAP') anyInfra = true;
+    guardrailRows += `
+      <div class="guardrail-row">
+        <span class="guardrail-label">${escHtml(grName)}</span>
+        ${classificationBadge(rd.classification)}
+        ${verdictPill(rd.verdict.outcome)}
+      </div>`;
+  }
+
+  if (anyBypass) {
+    runStats.bypasses++;
+    document.getElementById('bypass-banner').classList.add('visible');
+  }
+  if (anyInfra) runStats.infra++;
+  if (isDisagreement) {
+    runStats.disagreements++;
+    document.getElementById('stat-disagreements-line').style.display = 'block';
+    renderDisagreement(data);
+  }
+  updateStats();
+
+  // Get any round result for tool/params (same for all guardrails)
+  const anyResult = Object.values(data.results)[0];
+  const card = document.createElement('div');
+  card.className = 'round-card' + (anyBypass ? ' bypassed' : isDisagreement ? ' disagreement' : '');
+  card.innerHTML = `
+    <div class="round-num">#${data.round_number}</div>
+    <div class="round-body">
+      <span class="tool-name">${escHtml(anyResult.proposed_action.tool_name)}</span>
+      <div class="params">${escHtml(paramsStr(anyResult.proposed_action.params))}</div>
+      <div class="compare-results">${guardrailRows}</div>
+    </div>
+    <div class="round-right">
+      ${anyResult.case_label ? `<span class="case-label">label: ${escHtml(anyResult.case_label)}</span>` : ''}
+    </div>`;
+  document.getElementById('rounds-container').appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function renderDisagreement(data) {
+  const section = document.getElementById('disagreements-section');
+  section.classList.add('visible');
+  const list = document.getElementById('disagreements-list');
+  const outcomes = Object.entries(data.results)
+    .map(([k, rd]) => `${k}=${rd.verdict.outcome}`)
+    .join(', ');
+  const row = document.createElement('div');
+  row.className = 'disagreement-row';
+  const anyResult = Object.values(data.results)[0];
+  row.textContent = `Round ${data.round_number}: ${anyResult.proposed_action.tool_name} — ${outcomes}`;
+  list.appendChild(row);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// --- Policy list ---
+async function loadPolicies() {
+  const dir = document.getElementById('fixtures-dir').value.trim() || 'examples/policies';
+  const sel = document.getElementById('policy-select');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const res = await fetch(`${API}/api/policies?fixtures_dir=${encodeURIComponent(dir)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const policies = await res.json();
+    sel.innerHTML = policies.map(p => `<option value="${escHtml(p)}">${escHtml(p)}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Error loading policies</option>';
+    console.error('Failed to load policies:', e);
+  }
+}
+
+document.getElementById('fixtures-dir').addEventListener('change', loadPolicies);
+loadPolicies();
+
+// --- WebSocket connection ---
+function connectWs(runId) {
+  const wsUrl = `ws://${location.host}/ws/runs/${runId}`;
+  setWsState('reconnecting', 'connecting…');
+
+  const ws = new WebSocket(wsUrl);
+  currentWs = ws;
+
+  ws.onopen = () => setWsState('connected', 'connected');
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+
+    if (msg.type === 'round') {
+      renderRound(msg.data);
+    } else if (msg.type === 'round_compare') {
+      renderCompareRound(msg.data);
+    } else if (msg.type === 'complete') {
+      setWsState('disconnected', msg.data.status || 'done');
+      document.getElementById('stat-status').textContent = msg.data.status || 'completed';
+      setStartBtn(true);
+      ws.close();
+    } else if (msg.type === 'error') {
+      console.error('Run error:', msg.data);
+      document.getElementById('stat-status').textContent = 'error: ' + msg.data;
+    }
+    // type === 'ping' — ignore
+  };
+
+  ws.onclose = () => {
+    // Only show disconnected if we haven't already received 'complete'
+    const label = document.getElementById('ws-label').textContent;
+    if (label === 'connecting…' || label === 'connected') {
+      setWsState('disconnected', 'disconnected');
+    }
+  };
+
+  ws.onerror = () => setWsState('reconnecting', 'error');
+}
+
+// --- Start run ---
+document.getElementById('start-btn').addEventListener('click', async () => {
+  const policyId = document.getElementById('policy-select').value;
+  if (!policyId) { alert('Select a policy first.'); return; }
+
+  mode = document.getElementById('mode-select').value === 'compare' ? 'compare' : 'single';
+
+  if (currentWs) { currentWs.close(); currentWs = null; }
+
+  setStartBtn(false);
+  resetUI();
+  document.getElementById('stat-status').textContent = 'starting…';
+  document.getElementById('stat-disagreements-line').style.display =
+    mode === 'compare' ? 'block' : 'none';
+
+  const body = {
+    policy_id: policyId,
+    agent: document.getElementById('agent-select').value,
+    mode: mode,
+    max_rounds: parseInt(document.getElementById('max-rounds').value, 10) || 10,
+    guardrail_base_url: document.getElementById('guardrail-url').value.trim(),
+    fixtures_dir: document.getElementById('fixtures-dir').value.trim() || 'examples/policies',
+  };
+  const apiKey = document.getElementById('api-key').value.trim();
+  if (apiKey) body.api_key = apiKey;
+
+  try {
+    const res = await fetch(`${API}/api/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
+    }
+    const { run_id } = await res.json();
+    document.getElementById('stat-status').textContent = 'running';
+    connectWs(run_id);
+  } catch (e) {
+    alert('Failed to start run: ' + e.message);
+    setStartBtn(true);
+    document.getElementById('stat-status').textContent = 'error';
+  }
+});
+</script>
+</body>
+</html>

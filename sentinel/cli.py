@@ -387,6 +387,28 @@ def list_policies(
         typer.echo(name)
 
 
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (dev mode)"),
+) -> None:
+    """Start the Sentinel web server."""
+    try:
+        import uvicorn
+    except ImportError:
+        typer.echo("[ERROR] uvicorn not installed. Run: pip install 'uvicorn[standard]'", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Sentinel GUI → http://{host}:{port}/")
+    uvicorn.run(
+        "sentinel.web.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
+
 @app.command("deploy")
 def deploy(
     config_path: str = typer.Option("sentinel.yaml", "--config", help="Path to sentinel.yaml"),
