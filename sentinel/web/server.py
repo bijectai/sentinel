@@ -59,6 +59,10 @@ _ws_queues: dict[str, list[asyncio.Queue]] = {}
 # ---------------------------------------------------------------------------
 
 _web_dir = os.path.join(os.path.dirname(__file__))
+_public_dir = os.path.join(_web_dir, "..", "..", "web", "public")
+
+if os.path.isdir(_public_dir):
+    app.mount("/public", StaticFiles(directory=_public_dir), name="public")
 
 
 @app.get("/")

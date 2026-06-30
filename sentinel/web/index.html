@@ -1,559 +1,550 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sentinel — Guardrail Evaluator</title>
 <style>
   :root {
-    --bg: #0d0d0d;
-    --bg2: #141414;
-    --bg3: #1a1a1a;
-    --border: #2a2a2a;
-    --text: #e0e0e0;
-    --muted: #666;
-    --green: #22c55e;
-    --red: #ef4444;
-    --yellow: #facc15;
-    --blue: #3b82f6;
-    --orange: #f97316;
-    --purple: #a855f7;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --accent: #10b981;
+    --danger: #ef4444;
+    --warn: #f59e0b;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-    font-size: 13px;
-    line-height: 1.6;
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #080808; color: #fff; }
+  select { appearance: none; -webkit-appearance: none; outline: none; cursor: pointer; }
+  input { outline: none; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+  @keyframes row-enter {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 14px 24px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+  @keyframes banner-drop {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
   }
-  header h1 { font-size: 16px; letter-spacing: 0.1em; color: var(--text); }
-  header span { color: var(--muted); font-size: 11px; }
-
-  #ws-indicator {
-    margin-left: auto;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
   }
-  #ws-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--muted);
-    transition: background 0.3s;
+  @keyframes summary-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  #ws-dot.connected { background: var(--green); }
-  #ws-dot.reconnecting { background: var(--yellow); }
-  #ws-dot.disconnected { background: var(--red); }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    height: calc(100vh - 51px);
-  }
-
-  aside {
-    border-right: 1px solid var(--border);
-    padding: 20px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    overflow-y: auto;
-  }
-  .field label {
-    display: block;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    margin-bottom: 5px;
-  }
-  .field select, .field input {
-    width: 100%;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 7px 10px;
-    font-family: inherit;
-    font-size: 12px;
-    border-radius: 4px;
-    outline: none;
-  }
-  .field select:focus, .field input:focus { border-color: var(--blue); }
-  .field input[type="password"] { letter-spacing: 0.05em; }
-
-  button#start-btn {
-    width: 100%;
-    background: var(--blue);
-    color: #fff;
-    border: none;
-    padding: 10px;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    border-radius: 4px;
-    cursor: pointer;
-    letter-spacing: 0.04em;
-  }
-  button#start-btn:hover { background: #2563eb; }
-  button#start-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
-
-  #summary {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 12px;
-    font-size: 11px;
-    color: var(--muted);
-    display: none;
-  }
-  #summary.visible { display: block; }
-  #summary .stat { color: var(--text); }
-  #summary .bypass-stat { color: var(--red); font-weight: 700; }
-
-  main {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  #bypass-banner {
-    background: #450a0a;
-    border-bottom: 2px solid var(--red);
-    padding: 10px 20px;
-    color: var(--red);
-    font-weight: 700;
-    font-size: 13px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-    letter-spacing: 0.04em;
-  }
+  #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top-bar { flex-shrink: 0; height: 52px; display: flex; align-items: stretch; background: #0b0b0b; border-bottom: 1px solid rgba(255,255,255,0.08); z-index: 20; overflow: hidden; }
+  #bypass-banner { flex-shrink: 0; background: rgba(239,68,68,0.11); border-bottom: 2px solid rgba(239,68,68,0.45); padding: 0 20px; height: 44px; display: none; align-items: center; gap: 14px; animation: banner-drop 0.2s ease both; z-index: 15; }
   #bypass-banner.visible { display: flex; }
-
-  #rounds-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .round-card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 14px;
-    display: grid;
-    grid-template-columns: 36px 1fr auto;
-    gap: 10px;
-    align-items: start;
-  }
-  .round-card.bypassed {
-    border-color: var(--red);
-    background: #1a0000;
-  }
-  .round-card.disagreement {
-    border-color: var(--yellow);
-  }
-
-  .round-num {
-    font-size: 10px;
-    color: var(--muted);
-    text-align: right;
-    padding-top: 2px;
-  }
-
-  .round-body { min-width: 0; }
-  .tool-name { color: var(--blue); font-weight: 600; }
-  .params {
-    color: var(--muted);
-    word-break: break-all;
-    white-space: pre-wrap;
-    font-size: 11px;
-    margin-top: 2px;
-  }
-  .compare-results { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
-  .guardrail-row { display: flex; gap: 8px; align-items: center; font-size: 11px; }
-  .guardrail-label { color: var(--muted); min-width: 60px; }
-
-  .badge {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 3px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
-  }
-  .badge.BYPASSED        { background: #450a0a; color: var(--red); }
-  .badge.BLOCKED_CORRECTLY { background: #052e16; color: var(--green); }
-  .badge.ALLOWED_CORRECTLY { background: #052e16; color: var(--green); }
-  .badge.INDETERMINATE   { background: #1c1c00; color: var(--yellow); }
-  .badge.INFRA_GAP       { background: #1c0d00; color: var(--orange); }
-
-  .verdict-pill {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    letter-spacing: 0.03em;
-  }
-  .verdict-pill.proved   { background: #052e16; color: var(--green); }
-  .verdict-pill.refuted  { background: #1a0000; color: var(--red); }
-  .verdict-pill.timeout,
-  .verdict-pill.error    { background: #1c0d00; color: var(--orange); }
-
-  .round-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    white-space: nowrap;
-  }
-  .case-label {
-    font-size: 10px;
-    color: var(--muted);
-  }
-
-  #disagreements-section {
-    border-top: 1px solid var(--border);
-    padding: 12px 20px;
-    display: none;
-  }
-  #disagreements-section.visible { display: block; }
-  #disagreements-section h3 {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--yellow);
-    margin-bottom: 8px;
-  }
-  .disagreement-row {
-    font-size: 11px;
-    color: var(--text);
-    padding: 4px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .disagreement-row:last-child { border-bottom: none; }
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  #content-row { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+  #feed-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  #feed-headers { flex-shrink: 0; display: grid; padding: 0 16px; height: 34px; align-items: center; background: #0b0b0b; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  #feed-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  #progress-bar-wrap { flex-shrink: 0; height: 2px; background: rgba(255,255,255,0.05); display: none; }
+  #progress-bar-wrap.visible { display: block; }
+  #detail-panel { width: 390px; flex-shrink: 0; border-left: 1px solid rgba(255,255,255,0.08); overflow-y: auto; background: #0b0b0b; display: none; flex-direction: column; }
+  #detail-panel.visible { display: flex; }
+  #summary-panel { flex-shrink: 0; border-top: 1px solid rgba(255,255,255,0.10); background: #0d0d0d; padding: 14px 20px; animation: summary-rise 0.3s ease both; display: none; }
+  #summary-panel.visible { display: block; }
 </style>
 </head>
 <body>
-
-<header>
-  <h1>SENTINEL</h1>
-  <span>adversarial guardrail evaluator</span>
-  <div id="ws-indicator">
-    <div id="ws-dot"></div>
-    <span id="ws-label">idle</span>
-  </div>
-</header>
-
-<div class="layout">
-  <aside>
-    <div class="field">
-      <label>Fixtures Directory</label>
-      <input type="text" id="fixtures-dir" value="examples/policies" />
+<div id="app">
+  <!-- Top Bar -->
+  <div id="top-bar">
+    <!-- Brand -->
+    <div id="brand" style="display:flex;align-items:center;gap:10px;padding:0 18px;border-right:1px solid rgba(255,255,255,0.07);flex-shrink:0;">
+      <img id="brand-logo" src="/public/logo.png" alt="biject" style="height:135px;width:78px;display:block;flex-shrink:0;object-fit:contain;">
+      <span style="font-family:var(--font-mono);font-size:13px;color:rgba(255,255,255,0.22);letter-spacing:0.01em;">//</span>
+      <span style="font-family:var(--font-display);font-size:14px;font-weight:600;letter-spacing:-0.02em;color:rgba(255,255,255,0.65);">sentinel</span>
+      <span style="font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,0.28);letter-spacing:0.06em;border:1px solid rgba(255,255,255,0.11);border-radius:3px;padding:1px 5px;">v0.9.1</span>
     </div>
-    <div class="field">
-      <label>Policy</label>
-      <select id="policy-select"><option value="">Loading…</option></select>
-    </div>
-    <div class="field">
-      <label>Agent</label>
-      <select id="agent-select">
-        <option value="scripted">scripted</option>
-        <option value="claude">claude</option>
-        <option value="gpt">gpt</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Mode</label>
-      <select id="mode-select">
-        <option value="single">single</option>
-        <option value="compare">compare (biject vs stub)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Max Rounds</label>
-      <input type="number" id="max-rounds" value="10" min="1" max="100" />
-    </div>
-    <div class="field">
-      <label>Guardrail Base URL</label>
-      <input type="text" id="guardrail-url" value="http://localhost:3000" />
-    </div>
-    <div class="field">
-      <label>API Key (optional)</label>
-      <input type="password" id="api-key" placeholder="sk-…" autocomplete="off" />
-    </div>
-
-    <button id="start-btn">▶ Start Run</button>
-
-    <div id="summary">
-      <div>Rounds: <span class="stat" id="stat-rounds">0</span></div>
-      <div>Bypasses: <span id="stat-bypasses" class="stat">0</span></div>
-      <div>Infra gaps: <span class="stat" id="stat-infra">0</span></div>
-      <div id="stat-disagreements-line" style="display:none">
-        Disagreements: <span class="stat" id="stat-disagreements">0</span>
+    <!-- Config -->
+    <div id="top-config" style="flex:1;display:flex;align-items:center;gap:10px;padding:0 14px;overflow:hidden;min-width:0;">
+      <button id="mode-toggle" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:6px;padding:0 11px;height:26px;cursor:pointer;display:flex;align-items:center;flex-shrink:0;">
+        <span id="mode-label" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.55);">SINGLE ▶</span>
+      </button>
+      <div style="width:1px;height:22px;background:rgba(255,255,255,0.08);flex-shrink:0;"></div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">POLICY</span>
+        <select id="policy-select" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:6px;padding:0 24px 0 8px;font-family:var(--font-sans);font-size:12px;color:rgba(255,255,255,0.82);height:26px;min-width:130px;max-width:180px;">
+          <option value="">Loading…</option>
+        </select>
       </div>
-      <div>Status: <span class="stat" id="stat-status">—</span></div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">AGENT</span>
+        <select id="agent-select" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:6px;padding:0 24px 0 8px;font-family:var(--font-sans);font-size:12px;color:rgba(255,255,255,0.82);height:26px;min-width:130px;max-width:180px;">
+          <option value="scripted">Scripted Replay</option>
+          <option value="claude">Claude Sonnet 4</option>
+          <option value="gpt">GPT-4o</option>
+        </select>
+      </div>
+      <div style="width:1px;height:22px;background:rgba(255,255,255,0.08);flex-shrink:0;"></div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <span id="guardrail-url-label" style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">GUARDRAIL URL</span>
+        <input id="guardrail-url" type="text" value="http://localhost:3000" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.11);border-radius:6px;padding:0 8px;font-family:var(--font-mono);font-size:11px;color:rgba(255,255,255,0.85);height:26px;width:170px;">
+      </div>
+      <div id="guardrail-b-wrap" style="display:none;flex-direction:column;gap:2px;flex-shrink:0;">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">GUARDRAIL B</span>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:6px;padding:0 10px;height:26px;display:flex;align-items:center;font-family:var(--font-sans);font-size:12px;color:rgba(255,255,255,0.5);white-space:nowrap;">Stub Adapter</div>
+      </div>
     </div>
-  </aside>
+    <!-- Right controls -->
+    <div style="display:flex;align-items:center;gap:14px;padding:0 16px;border-left:1px solid rgba(255,255,255,0.07);flex-shrink:0;">
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">API KEY</span>
+        <input id="api-key" type="password" placeholder="sk-…" autocomplete="off" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.11);border-radius:6px;padding:0 8px;font-family:var(--font-mono);font-size:11px;color:rgba(255,255,255,0.85);height:26px;width:80px;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;">ROUNDS</span>
+        <input id="max-rounds" type="number" value="20" min="1" max="100" style="width:56px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.11);border-radius:6px;padding:0 8px;font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.85);text-align:center;height:26px;">
+      </div>
+      <button id="run-btn" style="background:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:0 18px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;min-width:68px;transition:all 0.15s ease;">
+        <span id="run-btn-label" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;color:#1a1a1a;">RUN</span>
+      </button>
+      <div style="display:flex;align-items:center;gap:7px;min-width:158px;">
+        <span id="status-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.22);flex-shrink:0;"></span>
+        <span id="status-label" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;color:rgba(255,255,255,0.55);white-space:nowrap;">IDLE</span>
+      </div>
+    </div>
+  </div>
 
-  <main>
-    <div id="bypass-banner">⚠ BYPASS DETECTED — guardrail allowed an action that should have been refused</div>
-    <div id="rounds-container"></div>
-    <div id="disagreements-section">
-      <h3>⚠ Disagreements</h3>
-      <div id="disagreements-list"></div>
+  <!-- Bypass Banner -->
+  <div id="bypass-banner">
+    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ef4444;letter-spacing:0.08em;white-space:nowrap;">⚠ BYPASS DETECTED</span>
+    <div style="width:1px;height:14px;background:rgba(239,68,68,0.35);flex-shrink:0;"></div>
+    <span id="bypass-msg" style="font-family:var(--font-mono);font-size:11px;color:rgba(239,68,68,0.75);letter-spacing:0.03em;"></span>
+    <span style="margin-left:auto;font-family:var(--font-mono);font-size:9px;color:rgba(239,68,68,0.45);letter-spacing:0.06em;white-space:nowrap;text-transform:uppercase;">red rows below ↓</span>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main">
+    <div id="content-row">
+      <!-- Feed -->
+      <div id="feed-wrap">
+        <div id="feed-headers">
+          <!-- filled by JS -->
+        </div>
+        <div id="feed-scroll">
+          <div id="empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;pointer-events:none;">
+            <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;color:rgba(255,255,255,0.18);text-transform:uppercase;">no active run</span>
+            <span style="font-family:var(--font-sans);font-size:12px;color:rgba(255,255,255,0.22);">configure parameters above and press RUN</span>
+          </div>
+        </div>
+        <div id="progress-bar-wrap">
+          <div id="progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.5s ease;"></div>
+        </div>
+      </div>
+      <!-- Detail Panel -->
+      <div id="detail-panel">
+        <div id="detail-header" style="flex-shrink:0;height:36px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;background:#0b0b0b;z-index:2;gap:8px;">
+          <span id="detail-title" style="font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.45);text-transform:uppercase;"></span>
+          <button id="detail-close" style="margin-left:auto;background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.35);font-size:18px;line-height:1;padding:0 2px;display:flex;align-items:center;">×</button>
+        </div>
+        <div id="detail-content" style="flex:1;padding:16px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;"></div>
+      </div>
     </div>
-  </main>
+    <!-- Summary Panel -->
+    <div id="summary-panel"></div>
+  </div>
 </div>
 
 <script>
-const API = '';
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  mode: 'single',        // 'single' | 'comparison'
+  policy: '',
+  agent: 'scripted',
+  guardrailUrl: 'http://localhost:3000',
+  apiKey: '',
+  maxRounds: 20,
+  status: 'idle',        // 'idle' | 'running' | 'completed' | 'failed'
+  rounds: [],
+  selectedId: null,
+  bypassCount: 0,
+  guardrailNames: ['biject', 'stub'],
+  ws: null,
+};
 
-// --- State ---
-let currentWs = null;
-let runStats = { rounds: 0, bypasses: 0, infra: 0, disagreements: 0 };
-let mode = 'single';
-
-// --- UI helpers ---
-function setWsState(state, label) {
-  const dot = document.getElementById('ws-dot');
-  dot.className = state;
-  document.getElementById('ws-label').textContent = label;
+// ── Utils ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function setStartBtn(enabled) {
-  document.getElementById('start-btn').disabled = !enabled;
+function fmtParamsShort(p) {
+  const s = JSON.stringify(p);
+  return s.length > 72 ? s.slice(0, 69) + '…' : s;
 }
 
-function resetUI() {
-  document.getElementById('rounds-container').innerHTML = '';
+function fmtParamsFull(tool, p) {
+  return tool + '(\n' + JSON.stringify(p, null, 2) + '\n)';
+}
+
+function fmtLatency(us) {
+  if (us == null) return null;
+  return (us / 1000).toFixed(1) + ' ms';
+}
+
+function verdictFromOutcome(outcome) {
+  if (outcome === 'proved')  return 'ALLOW';
+  if (outcome === 'refuted') return 'DENY';
+  if (outcome === 'timeout') return 'TIMEOUT';
+  return 'ERROR';
+}
+
+function verdictColor(outcome) {
+  if (outcome === 'proved')  return '#ef4444';
+  if (outcome === 'refuted') return 'rgba(16,185,129,0.7)';
+  return 'rgba(255,255,255,0.28)';
+}
+
+function badgeHTML(cls) {
+  const styles = {
+    BYPASSED:          'background:rgba(239,68,68,0.18);color:#ef4444;border:1px solid rgba(239,68,68,0.40)',
+    INDETERMINATE:     'background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.30)',
+    INFRA_GAP:         'background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.12)',
+    BLOCKED_CORRECTLY: 'background:rgba(16,185,129,0.07);color:rgba(16,185,129,0.52);border:1px solid rgba(16,185,129,0.14)',
+    ALLOWED_CORRECTLY: 'background:rgba(16,185,129,0.07);color:rgba(16,185,129,0.52);border:1px solid rgba(16,185,129,0.14)',
+  };
+  const st = styles[cls] || styles.INFRA_GAP;
+  const label = cls.replace(/_/g, ' ');
+  return `<span style="font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:0.07em;padding:2px 7px;border-radius:4px;text-transform:uppercase;white-space:nowrap;display:inline-block;${st}">${esc(label)}</span>`;
+}
+
+function feedGrid() {
+  return S.mode === 'comparison' ? '48px 1fr 190px 190px 52px' : '48px 1fr 260px';
+}
+
+// ── Top-bar mode state ──────────────────────────────────────────────────────
+function applyModeUI() {
+  const isComp = S.mode === 'comparison';
+  const toggle = document.getElementById('mode-toggle');
+  const label  = document.getElementById('mode-label');
+  toggle.style.background = isComp ? 'rgba(16,185,129,0.09)' : 'rgba(255,255,255,0.04)';
+  toggle.style.border     = isComp ? '1px solid rgba(16,185,129,0.28)' : '1px solid rgba(255,255,255,0.10)';
+  label.textContent = isComp ? 'COMPARISON ⇄' : 'SINGLE ▶';
+  label.style.color = isComp ? 'var(--accent)' : 'rgba(255,255,255,0.55)';
+  document.getElementById('guardrail-url-label').textContent = isComp ? 'GUARDRAIL A (URL)' : 'GUARDRAIL URL';
+  const bWrap = document.getElementById('guardrail-b-wrap');
+  bWrap.style.display = isComp ? 'flex' : 'none';
+  renderFeedHeaders();
+}
+
+function applyRunUI() {
+  const running = S.status === 'running';
+  const btn      = document.getElementById('run-btn');
+  const btnLabel = document.getElementById('run-btn-label');
+  const dot      = document.getElementById('status-dot');
+  const lbl      = document.getElementById('status-label');
+
+  btn.style.background = running ? 'rgba(239,68,68,0.12)' : '#fff';
+  btn.style.border     = running ? '1px solid rgba(239,68,68,0.42)' : '1px solid rgba(255,255,255,0.25)';
+  btnLabel.textContent = running ? 'STOP' : 'RUN';
+  btnLabel.style.color = running ? '#ef4444' : '#1a1a1a';
+
+  const dotColors = { idle: 'rgba(255,255,255,0.22)', running: '#10b981', completed: '#10b981', failed: '#ef4444' };
+  dot.style.background = dotColors[S.status] || dotColors.idle;
+  dot.style.animation  = running ? 'pulse-dot 1.3s ease-in-out infinite' : 'none';
+
+  const runningLabel = `RUNNING — ${S.rounds.length} / ${S.maxRounds}`;
+  const statusLabels = { idle: 'IDLE', running: runningLabel, completed: 'COMPLETED', failed: 'FAILED' };
+  lbl.textContent = statusLabels[S.status] || 'IDLE';
+
+  const progress = document.getElementById('progress-bar-wrap');
+  if (running || S.status === 'completed' || S.status === 'failed') {
+    progress.classList.add('visible');
+    const pct = S.maxRounds > 0 ? (S.rounds.length / S.maxRounds * 100) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-bar').style.background = S.bypassCount > 0 ? 'var(--danger)' : 'var(--accent)';
+  } else {
+    progress.classList.remove('visible');
+  }
+}
+
+// ── Feed headers ────────────────────────────────────────────────────────────
+function renderFeedHeaders() {
+  const isComp = S.mode === 'comparison';
+  const hdr = document.getElementById('feed-headers');
+  hdr.style.gridTemplateColumns = feedGrid();
+  const hs = 'font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:0.12em;color:rgba(255,255,255,0.28);text-transform:uppercase;';
+  if (!isComp) {
+    hdr.innerHTML = `
+      <span style="${hs}padding-left:4px">RND</span>
+      <span style="${hs}padding-left:12px">PROPOSED ACTION</span>
+      <span style="${hs}padding-left:12px">VERDICT · CLASSIFICATION</span>`;
+  } else {
+    const g1 = S.guardrailNames[0] || 'GUARDRAIL A';
+    const g2 = S.guardrailNames[1] || 'GUARDRAIL B';
+    hdr.innerHTML = `
+      <span style="${hs}padding-left:4px">RND</span>
+      <span style="${hs}padding-left:12px">PROPOSED ACTION</span>
+      <span style="${hs}padding-left:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g1.toUpperCase())}</span>
+      <span style="${hs}padding-left:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g2.toUpperCase())}</span>
+      <span style="${hs}text-align:center">Δ</span>`;
+  }
+}
+
+// ── Round rows ──────────────────────────────────────────────────────────────
+function buildRoundRow(r) {
+  const isComp    = S.mode === 'comparison';
+  const isBypassed = r.c1 === 'BYPASSED' || (isComp && r.c2 === 'BYPASSED');
+  const isSelected = S.selectedId === r.id;
+  const bg = isBypassed
+    ? (isSelected ? 'rgba(239,68,68,0.10)' : 'rgba(239,68,68,0.04)')
+    : (isSelected ? 'rgba(255,255,255,0.05)' : 'transparent');
+  const bl = isBypassed ? '2px solid rgba(239,68,68,0.65)' : '2px solid transparent';
+
+  const div = document.createElement('div');
+  div.className = 'round-row';
+  div.dataset.id = r.id;
+  div.style.cssText = `display:grid;grid-template-columns:${feedGrid()};padding:0 16px;height:44px;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);border-left:${bl};background:${bg};cursor:pointer;animation:row-enter 0.22s ease both;`;
+  div.addEventListener('click', () => {
+    S.selectedId = S.selectedId === r.id ? null : r.id;
+    refreshRowHighlights();
+    renderDetail();
+  });
+
+  // Round num
+  div.innerHTML += `<div style="display:flex;align-items:center;padding-left:4px;flex-shrink:0"><span style="font-family:var(--font-mono);font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:0.04em">${String(r.id).padStart(2,'0')}</span></div>`;
+
+  // Action
+  div.innerHTML += `<div style="padding:0 12px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;overflow:hidden"><span style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:rgba(255,255,255,0.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.tool)}()</span><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.paramsShort)}</span></div>`;
+
+  if (!isComp) {
+    const vLabel = verdictFromOutcome(r.outcome1);
+    const vColor = verdictColor(r.outcome1);
+    div.innerHTML += `<div style="padding:0 12px;display:flex;align-items:center;gap:9px;overflow:hidden;flex-shrink:0">${badgeHTML(r.c1)}<span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${vColor};letter-spacing:0.04em;flex-shrink:0">${vLabel}</span></div>`;
+  } else {
+    div.innerHTML += `<div style="padding:0 12px;display:flex;align-items:center;overflow:hidden;flex-shrink:0">${badgeHTML(r.c1)}</div>`;
+    div.innerHTML += `<div style="padding:0 12px;display:flex;align-items:center;overflow:hidden;flex-shrink:0">${r.c2 ? badgeHTML(r.c2) : ''}</div>`;
+    const deltaHTML = r.disagreement
+      ? `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.28);border-radius:3px;padding:1px 5px;letter-spacing:0.06em;white-space:nowrap">≠</span>`
+      : '';
+    div.innerHTML += `<div style="display:flex;align-items:center;justify-content:center;flex-shrink:0">${deltaHTML}</div>`;
+  }
+
+  return div;
+}
+
+function appendRoundToFeed(r) {
+  const feed = document.getElementById('feed-scroll');
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+  removeRunningIndicator();
+  feed.appendChild(buildRoundRow(r));
+  if (S.status === 'running') feed.appendChild(buildRunningIndicator());
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function buildRunningIndicator() {
+  const div = document.createElement('div');
+  div.id = 'running-indicator';
+  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 20px;border-top:1px solid rgba(255,255,255,0.04)';
+  div.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-dot 1.2s ease-in-out infinite"></span><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:0.06em">probing round ${S.rounds.length + 1}…</span><span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.2)">${S.rounds.length} / ${S.maxRounds}</span>`;
+  return div;
+}
+
+function removeRunningIndicator() {
+  const ri = document.getElementById('running-indicator');
+  if (ri) ri.remove();
+}
+
+function refreshRowHighlights() {
+  document.querySelectorAll('.round-row').forEach(row => {
+    const id = parseInt(row.dataset.id);
+    const r = S.rounds.find(x => x.id === id);
+    if (!r) return;
+    const isComp    = S.mode === 'comparison';
+    const isBypassed = r.c1 === 'BYPASSED' || (isComp && r.c2 === 'BYPASSED');
+    const isSelected = S.selectedId === id;
+    row.style.background = isBypassed
+      ? (isSelected ? 'rgba(239,68,68,0.10)' : 'rgba(239,68,68,0.04)')
+      : (isSelected ? 'rgba(255,255,255,0.05)' : 'transparent');
+  });
+}
+
+// ── Detail panel ────────────────────────────────────────────────────────────
+function renderDetail() {
+  const panel = document.getElementById('detail-panel');
+  const content = document.getElementById('detail-content');
+
+  if (S.selectedId === null) {
+    panel.classList.remove('visible');
+    return;
+  }
+  const r = S.rounds.find(x => x.id === S.selectedId);
+  if (!r) { panel.classList.remove('visible'); return; }
+
+  panel.classList.add('visible');
+  document.getElementById('detail-title').textContent = `ROUND ${String(r.id).padStart(2,'0')} — DETAIL`;
+
+  const isComp = S.mode === 'comparison';
+  let html = '';
+
+  // Badges
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${badgeHTML(r.c1)}`;
+  if (isComp && r.c2) {
+    html += `<span style="font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,0.2)">vs</span>${badgeHTML(r.c2)}`;
+    if (r.disagreement) {
+      html += `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.28);border-radius:3px;padding:2px 7px;letter-spacing:0.07em;text-transform:uppercase">DISAGREEMENT</span>`;
+    }
+  }
+  html += `</div>`;
+
+  // Proposed action
+  html += `<div>
+    <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:0.14em;color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px">PROPOSED ACTION</div>
+    <pre style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:11px 13px;font-family:var(--font-mono);font-size:11.5px;color:rgba(255,255,255,0.8);white-space:pre-wrap;word-break:break-all;line-height:1.65">${esc(fmtParamsFull(r.tool, r.params))}</pre>
+  </div>`;
+
+  // Guardrail 1
+  html += guardrailDetailHTML(isComp ? (S.guardrailNames[0] || 'Biject') : 'Guardrail', r.outcome1, r.lat1, r.reject1);
+
+  // Guardrail 2 (compare)
+  if (isComp && r.c2) {
+    html += guardrailDetailHTML(S.guardrailNames[1] || 'Stub', r.outcome2, r.lat2, r.reject2);
+  }
+
+  // Timestamp
+  html += `<div style="padding-top:4px;border-top:1px solid rgba(255,255,255,0.06)"><span style="font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,0.18);letter-spacing:0.04em">${esc(r.ts)}</span></div>`;
+
+  content.innerHTML = html;
+}
+
+function guardrailDetailHTML(name, outcome, lat, rejectCode) {
+  const vLabel = verdictFromOutcome(outcome);
+  const vColor = verdictColor(outcome);
+  let rows = `<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.3)">verdict</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.04em;color:${vColor}">${vLabel}</span></div>`;
+  if (lat) {
+    rows += `<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.3)">latency</span><span style="font-family:var(--font-mono);font-size:11px;color:rgba(255,255,255,0.55)">${esc(lat)}</span></div>`;
+  }
+  if (rejectCode) {
+    rows += `<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.3)">reject code</span><span style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.48);background:rgba(255,255,255,0.04);border-radius:4px;padding:1px 6px">${esc(rejectCode)}</span></div>`;
+  }
+  return `<div>
+    <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:0.14em;color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px">${esc(name.toUpperCase())}</div>
+    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:11px 13px;display:flex;flex-direction:column;gap:7px">${rows}</div>
+  </div>`;
+}
+
+// ── Summary panel ───────────────────────────────────────────────────────────
+function renderSummary() {
+  const panel = document.getElementById('summary-panel');
+  const isComp = S.mode === 'comparison';
+  const rounds = S.rounds;
+
+  if (S.status !== 'completed' && S.status !== 'failed') {
+    panel.classList.remove('visible');
+    return;
+  }
+
+  const bypassCount  = S.bypassCount;
+  const indCount     = rounds.filter(r => r.c1 === 'INDETERMINATE' || (isComp && r.c2 === 'INDETERMINATE')).length;
+  const infraCount   = rounds.filter(r => r.c1 === 'INFRA_GAP'     || (isComp && r.c2 === 'INFRA_GAP')).length;
+  const corrCount    = rounds.filter(r => {
+    const ok1 = r.c1 === 'BLOCKED_CORRECTLY' || r.c1 === 'ALLOWED_CORRECTLY';
+    const ok2 = isComp && (r.c2 === 'BLOCKED_CORRECTLY' || r.c2 === 'ALLOWED_CORRECTLY');
+    return ok1 || ok2;
+  }).length;
+  const disagreeCount = rounds.filter(r => r.disagreement).length;
+  const runFailed = bypassCount > 0;
+
+  const statBase = 'display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:6px;min-width:68px;';
+  const numBase  = 'font-family:var(--font-mono);font-size:17px;font-weight:700;';
+  const lblBase  = 'font-family:var(--font-mono);font-size:8px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;text-transform:uppercase;margin-top:1px;';
+
+  const stat = (num, label, color) =>
+    `<div style="${statBase}"><span style="${numBase}color:${color}">${num}</span><span style="${lblBase}">${label}</span></div>`;
+
+  const bypassStat = `<div style="${statBase}background:${bypassCount>0?'rgba(239,68,68,0.07)':'rgba(255,255,255,0.03)'};border:${bypassCount>0?'1px solid rgba(239,68,68,0.22)':'1px solid rgba(255,255,255,0.07)'}"><span style="${numBase}color:${bypassCount>0?'#ef4444':'rgba(255,255,255,0.3)'}">${bypassCount}</span><span style="${lblBase}">bypassed</span></div>`;
+
+  const verdictStyle = runFailed
+    ? 'background:rgba(239,68,68,0.14);color:#ef4444;border:1px solid rgba(239,68,68,0.32)'
+    : 'background:rgba(16,185,129,0.10);color:var(--accent);border:1px solid rgba(16,185,129,0.25)';
+  const verdictText = runFailed ? `FAIL — ${bypassCount} bypass${bypassCount>1?'es':''}` : 'PASS';
+
+  panel.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-family:var(--font-display);font-size:13px;font-weight:500;color:rgba(255,255,255,0.45);letter-spacing:-0.01em">run complete</span>
+      <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;padding:3px 10px;border-radius:5px;text-transform:uppercase;${verdictStyle}">${verdictText}</span>
+    </div>
+    <div style="width:1px;height:28px;background:rgba(255,255,255,0.08);flex-shrink:0"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1;min-width:0">
+      ${stat(rounds.length, 'rounds', 'rgba(255,255,255,0.8)')}
+      ${bypassStat}
+      ${stat(indCount, 'indeterminate', indCount>0?'#f59e0b':'rgba(255,255,255,0.3)')}
+      ${stat(infraCount, 'infra_gap', 'rgba(255,255,255,0.3)')}
+      ${stat(corrCount, 'correct', 'rgba(16,185,129,0.65)')}
+      ${isComp ? stat(disagreeCount, 'disagree', disagreeCount>0?'#f59e0b':'rgba(255,255,255,0.3)') : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <button id="copy-report-btn" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.11);border-radius:6px;padding:0 14px;height:30px;font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:0.08em;color:rgba(255,255,255,0.6);cursor:pointer;text-transform:uppercase;white-space:nowrap;display:flex;align-items:center">COPY REPORT</button>
+      <button id="new-run-btn" style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.28);border-radius:6px;padding:0 14px;height:30px;font-family:var(--font-mono);font-size:9.5px;font-weight:700;letter-spacing:0.08em;color:var(--accent);cursor:pointer;text-transform:uppercase;white-space:nowrap;display:flex;align-items:center">NEW RUN</button>
+    </div>
+  </div>`;
+
+  panel.classList.add('visible');
+
+  document.getElementById('copy-report-btn').addEventListener('click', () => {
+    const report = {
+      tool: 'sentinel', version: '0.9.1',
+      run: { policy: S.policy, agent: S.agent, mode: S.mode, rounds: rounds.length },
+      results: { bypassed: bypassCount, indeterminate: indCount, infra_gap: infraCount, correct: corrCount, disagreements: isComp ? disagreeCount : null },
+      verdict: runFailed ? 'FAIL' : 'PASS',
+      timestamp: new Date().toISOString(),
+    };
+    navigator.clipboard.writeText(JSON.stringify(report, null, 2)).catch(() => {});
+  });
+
+  document.getElementById('new-run-btn').addEventListener('click', resetRun);
+}
+
+// ── Run lifecycle ────────────────────────────────────────────────────────────
+function resetRun() {
+  if (S.ws) { S.ws.close(); S.ws = null; }
+  S.rounds = []; S.selectedId = null; S.status = 'idle'; S.bypassCount = 0;
+  const feed = document.getElementById('feed-scroll');
+  feed.innerHTML = `<div id="empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;pointer-events:none"><span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;color:rgba(255,255,255,0.18);text-transform:uppercase">no active run</span><span style="font-family:var(--font-sans);font-size:12px;color:rgba(255,255,255,0.22)">configure parameters above and press RUN</span></div>`;
+  document.getElementById('detail-panel').classList.remove('visible');
   document.getElementById('bypass-banner').classList.remove('visible');
-  document.getElementById('summary').classList.add('visible');
-  document.getElementById('disagreements-section').classList.remove('visible');
-  document.getElementById('disagreements-list').innerHTML = '';
-  runStats = { rounds: 0, bypasses: 0, infra: 0, disagreements: 0 };
-  updateStats();
+  document.getElementById('summary-panel').classList.remove('visible');
+  applyRunUI();
 }
 
-function updateStats() {
-  document.getElementById('stat-rounds').textContent = runStats.rounds;
-  document.getElementById('stat-bypasses').textContent = runStats.bypasses;
-  const bypassEl = document.getElementById('stat-bypasses');
-  bypassEl.className = runStats.bypasses > 0 ? 'bypass-stat' : 'stat';
-  document.getElementById('stat-infra').textContent = runStats.infra;
-  document.getElementById('stat-disagreements').textContent = runStats.disagreements;
-}
+async function startRun() {
+  S.policy = document.getElementById('policy-select').value;
+  S.agent  = document.getElementById('agent-select').value;
+  S.guardrailUrl = document.getElementById('guardrail-url').value.trim();
+  S.apiKey = document.getElementById('api-key').value.trim();
+  S.maxRounds = Math.max(1, Math.min(100, parseInt(document.getElementById('max-rounds').value) || 20));
 
-function classificationBadge(cls) {
-  return `<span class="badge ${cls}">${cls.replace(/_/g,' ')}</span>`;
-}
+  if (!S.policy) { alert('Select a policy first.'); return; }
 
-function verdictPill(verdict) {
-  return `<span class="verdict-pill ${verdict}">${verdict}</span>`;
-}
-
-function paramsStr(params) {
-  return JSON.stringify(params, null, 2);
-}
-
-// --- Render a single-mode round ---
-function renderRound(rd) {
-  const bypassed = rd.classification === 'BYPASSED';
-  const infra = rd.classification === 'INFRA_GAP';
-  if (bypassed) {
-    runStats.bypasses++;
-    document.getElementById('bypass-banner').classList.add('visible');
-  }
-  if (infra) runStats.infra++;
-  runStats.rounds++;
-  updateStats();
-
-  const card = document.createElement('div');
-  card.className = 'round-card' + (bypassed ? ' bypassed' : '');
-  card.innerHTML = `
-    <div class="round-num">#${rd.round_number}</div>
-    <div class="round-body">
-      <span class="tool-name">${escHtml(rd.proposed_action.tool_name)}</span>
-      <div class="params">${escHtml(paramsStr(rd.proposed_action.params))}</div>
-    </div>
-    <div class="round-right">
-      ${classificationBadge(rd.classification)}
-      ${verdictPill(rd.verdict.outcome)}
-      ${rd.case_label ? `<span class="case-label">label: ${escHtml(rd.case_label)}</span>` : ''}
-    </div>`;
-  document.getElementById('rounds-container').appendChild(card);
-  card.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-// --- Render a compare-mode round ---
-function renderCompareRound(data) {
-  const isDisagreement = data.is_disagreement;
-  runStats.rounds++;
-
-  let anyBypass = false;
-  let anyInfra = false;
-  let guardrailRows = '';
-  for (const [grName, rd] of Object.entries(data.results)) {
-    if (rd.classification === 'BYPASSED') anyBypass = true;
-    if (rd.classification === 'INFRA_GAP') anyInfra = true;
-    guardrailRows += `
-      <div class="guardrail-row">
-        <span class="guardrail-label">${escHtml(grName)}</span>
-        ${classificationBadge(rd.classification)}
-        ${verdictPill(rd.verdict.outcome)}
-      </div>`;
-  }
-
-  if (anyBypass) {
-    runStats.bypasses++;
-    document.getElementById('bypass-banner').classList.add('visible');
-  }
-  if (anyInfra) runStats.infra++;
-  if (isDisagreement) {
-    runStats.disagreements++;
-    document.getElementById('stat-disagreements-line').style.display = 'block';
-    renderDisagreement(data);
-  }
-  updateStats();
-
-  // Get any round result for tool/params (same for all guardrails)
-  const anyResult = Object.values(data.results)[0];
-  const card = document.createElement('div');
-  card.className = 'round-card' + (anyBypass ? ' bypassed' : isDisagreement ? ' disagreement' : '');
-  card.innerHTML = `
-    <div class="round-num">#${data.round_number}</div>
-    <div class="round-body">
-      <span class="tool-name">${escHtml(anyResult.proposed_action.tool_name)}</span>
-      <div class="params">${escHtml(paramsStr(anyResult.proposed_action.params))}</div>
-      <div class="compare-results">${guardrailRows}</div>
-    </div>
-    <div class="round-right">
-      ${anyResult.case_label ? `<span class="case-label">label: ${escHtml(anyResult.case_label)}</span>` : ''}
-    </div>`;
-  document.getElementById('rounds-container').appendChild(card);
-  card.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-function renderDisagreement(data) {
-  const section = document.getElementById('disagreements-section');
-  section.classList.add('visible');
-  const list = document.getElementById('disagreements-list');
-  const outcomes = Object.entries(data.results)
-    .map(([k, rd]) => `${k}=${rd.verdict.outcome}`)
-    .join(', ');
-  const row = document.createElement('div');
-  row.className = 'disagreement-row';
-  const anyResult = Object.values(data.results)[0];
-  row.textContent = `Round ${data.round_number}: ${anyResult.proposed_action.tool_name} — ${outcomes}`;
-  list.appendChild(row);
-}
-
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
-}
-
-// --- Policy list ---
-async function loadPolicies() {
-  const dir = document.getElementById('fixtures-dir').value.trim() || 'examples/policies';
-  const sel = document.getElementById('policy-select');
-  sel.innerHTML = '<option value="">Loading…</option>';
-  try {
-    const res = await fetch(`${API}/api/policies?fixtures_dir=${encodeURIComponent(dir)}`);
-    if (!res.ok) throw new Error(await res.text());
-    const policies = await res.json();
-    sel.innerHTML = policies.map(p => `<option value="${escHtml(p)}">${escHtml(p)}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">Error loading policies</option>';
-    console.error('Failed to load policies:', e);
-  }
-}
-
-document.getElementById('fixtures-dir').addEventListener('change', loadPolicies);
-loadPolicies();
-
-// --- WebSocket connection ---
-function connectWs(runId) {
-  const wsUrl = `ws://${location.host}/ws/runs/${runId}`;
-  setWsState('reconnecting', 'connecting…');
-
-  const ws = new WebSocket(wsUrl);
-  currentWs = ws;
-
-  ws.onopen = () => setWsState('connected', 'connected');
-
-  ws.onmessage = (evt) => {
-    let msg;
-    try { msg = JSON.parse(evt.data); } catch { return; }
-
-    if (msg.type === 'round') {
-      renderRound(msg.data);
-    } else if (msg.type === 'round_compare') {
-      renderCompareRound(msg.data);
-    } else if (msg.type === 'complete') {
-      setWsState('disconnected', msg.data.status || 'done');
-      document.getElementById('stat-status').textContent = msg.data.status || 'completed';
-      setStartBtn(true);
-      ws.close();
-    } else if (msg.type === 'error') {
-      console.error('Run error:', msg.data);
-      document.getElementById('stat-status').textContent = 'error: ' + msg.data;
-    }
-    // type === 'ping' — ignore
-  };
-
-  ws.onclose = () => {
-    // Only show disconnected if we haven't already received 'complete'
-    const label = document.getElementById('ws-label').textContent;
-    if (label === 'connecting…' || label === 'connected') {
-      setWsState('disconnected', 'disconnected');
-    }
-  };
-
-  ws.onerror = () => setWsState('reconnecting', 'error');
-}
-
-// --- Start run ---
-document.getElementById('start-btn').addEventListener('click', async () => {
-  const policyId = document.getElementById('policy-select').value;
-  if (!policyId) { alert('Select a policy first.'); return; }
-
-  mode = document.getElementById('mode-select').value === 'compare' ? 'compare' : 'single';
-
-  if (currentWs) { currentWs.close(); currentWs = null; }
-
-  setStartBtn(false);
-  resetUI();
-  document.getElementById('stat-status').textContent = 'starting…';
-  document.getElementById('stat-disagreements-line').style.display =
-    mode === 'compare' ? 'block' : 'none';
+  resetRun();
+  S.status = 'running';
+  applyRunUI();
 
   const body = {
-    policy_id: policyId,
-    agent: document.getElementById('agent-select').value,
-    mode: mode,
-    max_rounds: parseInt(document.getElementById('max-rounds').value, 10) || 10,
-    guardrail_base_url: document.getElementById('guardrail-url').value.trim(),
-    fixtures_dir: document.getElementById('fixtures-dir').value.trim() || 'examples/policies',
+    policy_id: S.policy,
+    agent: S.agent,
+    mode: S.mode === 'comparison' ? 'compare' : 'single',
+    max_rounds: S.maxRounds,
+    guardrail_base_url: S.guardrailUrl,
   };
-  const apiKey = document.getElementById('api-key').value.trim();
-  if (apiKey) body.api_key = apiKey;
+  if (S.apiKey) body.api_key = S.apiKey;
 
   try {
-    const res = await fetch(`${API}/api/runs`, {
+    const res = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -563,14 +554,161 @@ document.getElementById('start-btn').addEventListener('click', async () => {
       throw new Error(err.detail || res.statusText);
     }
     const { run_id } = await res.json();
-    document.getElementById('stat-status').textContent = 'running';
     connectWs(run_id);
   } catch (e) {
     alert('Failed to start run: ' + e.message);
-    setStartBtn(true);
-    document.getElementById('stat-status').textContent = 'error';
+    S.status = 'idle';
+    applyRunUI();
   }
+}
+
+function stopRun() {
+  if (S.ws) { S.ws.close(); S.ws = null; }
+  S.status = S.rounds.length > 0 ? 'completed' : 'idle';
+  removeRunningIndicator();
+  applyRunUI();
+  renderSummary();
+}
+
+function connectWs(runId) {
+  const ws = new WebSocket(`ws://${location.host}/ws/runs/${runId}`);
+  S.ws = ws;
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+
+    if (msg.type === 'round') {
+      const d = msg.data;
+      const r = {
+        id: d.round_number,
+        tool: d.proposed_action.tool_name,
+        params: d.proposed_action.params,
+        paramsShort: fmtParamsShort(d.proposed_action.params),
+        c1: d.classification,
+        outcome1: d.verdict.outcome,
+        lat1: fmtLatency(d.verdict.latency_us),
+        reject1: d.verdict.reject_code || null,
+        c2: null, outcome2: null, lat2: null, reject2: null,
+        disagreement: false,
+        ts: new Date().toISOString().replace('T', ' ').slice(0, 23) + ' UTC',
+      };
+      if (r.c1 === 'BYPASSED') {
+        S.bypassCount++;
+        updateBypassBanner();
+        document.getElementById('progress-bar').style.background = 'var(--danger)';
+      }
+      S.rounds.push(r);
+      appendRoundToFeed(r);
+      updateStatusLabel();
+      updateProgress();
+
+    } else if (msg.type === 'round_compare') {
+      const d = msg.data;
+      const names = Object.keys(d.results);
+      if (names.length >= 2) S.guardrailNames = names;
+      const g1 = d.results[names[0]];
+      const g2 = names[1] ? d.results[names[1]] : null;
+      if (!g1) return;
+      const r = {
+        id: d.round_number,
+        tool: g1.proposed_action.tool_name,
+        params: g1.proposed_action.params,
+        paramsShort: fmtParamsShort(g1.proposed_action.params),
+        c1: g1.classification,
+        outcome1: g1.verdict.outcome,
+        lat1: fmtLatency(g1.verdict.latency_us),
+        reject1: g1.verdict.reject_code || null,
+        c2: g2 ? g2.classification : null,
+        outcome2: g2 ? g2.verdict.outcome : null,
+        lat2: g2 ? fmtLatency(g2.verdict.latency_us) : null,
+        reject2: g2 ? (g2.verdict.reject_code || null) : null,
+        disagreement: d.is_disagreement,
+        ts: new Date().toISOString().replace('T', ' ').slice(0, 23) + ' UTC',
+      };
+      if (r.c1 === 'BYPASSED' || r.c2 === 'BYPASSED') {
+        S.bypassCount++;
+        updateBypassBanner();
+        document.getElementById('progress-bar').style.background = 'var(--danger)';
+      }
+      S.rounds.push(r);
+      appendRoundToFeed(r);
+      updateStatusLabel();
+      updateProgress();
+
+    } else if (msg.type === 'complete') {
+      S.status = msg.data.status === 'failed' ? 'failed' : 'completed';
+      S.ws = null;
+      removeRunningIndicator();
+      applyRunUI();
+      renderSummary();
+    } else if (msg.type === 'error') {
+      console.error('Run error:', msg.data);
+    }
+  };
+
+  ws.onerror = () => {
+    S.status = 'failed';
+    S.ws = null;
+    removeRunningIndicator();
+    applyRunUI();
+    renderSummary();
+  };
+}
+
+function updateBypassBanner() {
+  const banner = document.getElementById('bypass-banner');
+  banner.classList.add('visible');
+  document.getElementById('bypass-msg').textContent =
+    `${S.bypassCount} round(s) passed the guardrail unblocked — policy enforcement failed`;
+}
+
+function updateStatusLabel() {
+  document.getElementById('status-label').textContent = `RUNNING — ${S.rounds.length} / ${S.maxRounds}`;
+}
+
+function updateProgress() {
+  const pct = S.maxRounds > 0 ? (S.rounds.length / S.maxRounds * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-bar-wrap').classList.add('visible');
+}
+
+// ── Policy loading ───────────────────────────────────────────────────────────
+async function loadPolicies() {
+  try {
+    const res = await fetch('/api/policies');
+    if (!res.ok) return;
+    const policies = await res.json();
+    const sel = document.getElementById('policy-select');
+    sel.innerHTML = policies.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    if (policies.length > 0) S.policy = policies[0];
+  } catch (e) {
+    console.error('Failed to load policies:', e);
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.getElementById('brand-logo').onerror = function() { this.style.display = 'none'; };
+
+document.getElementById('mode-toggle').addEventListener('click', () => {
+  if (S.status === 'running') stopRun();
+  S.mode = S.mode === 'single' ? 'comparison' : 'single';
+  resetRun();
+  applyModeUI();
 });
+
+document.getElementById('run-btn').addEventListener('click', () => {
+  if (S.status === 'running') stopRun(); else startRun();
+});
+
+document.getElementById('detail-close').addEventListener('click', () => {
+  S.selectedId = null;
+  refreshRowHighlights();
+  renderDetail();
+});
+
+renderFeedHeaders();
+loadPolicies();
 </script>
 </body>
 </html>
